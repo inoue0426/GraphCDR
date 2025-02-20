@@ -14,6 +14,8 @@ parser.add_argument('--hidden_channels', dest='hidden_channels', type=int, defau
 parser.add_argument('--output_channels', dest='output_channels', type=int, default=100, help='')
 args = parser.parse_args()
 start_time = time.time()
+
+print('Loading data files...')
 #------data files
 Drug_info_file='../data/Drug/1.Drug_listMon Jun 24 09_00_55 2019.csv'
 IC50_threds_file='../data/Drug/drug_threshold.txt'
@@ -23,12 +25,17 @@ Genomic_mutation_file='../data/Celline/genomic_mutation_34673_demap_features.csv
 Cancer_response_exp_file='../data/Celline/GDSC_IC50.csv'
 Gene_expression_file='../data/Celline/genomic_expression_561celllines_697genes_demap_features.csv'
 Methylation_file='../data/Celline/genomic_methylation_561celllines_808genes_demap_features.csv'
+
+print('Extracting bio-features...')
 #-------bio-feature extraction
 drug_feature, mutation_feature, gexpr_feature, methylation_feature, data_new, nb_celllines, nb_drugs=dataload(Drug_info_file, IC50_threds_file, Drug_feature_file, Cell_line_info_file, Genomic_mutation_file,
              Cancer_response_exp_file, Gene_expression_file, Methylation_file)
-#-------split train and test sets 
+
+print('Processing train/test split...')
+#-------split train and test sets
 drug_set,cellline_set,train_edge,label_pos,train_mask,test_mask,atom_shape = process(drug_feature, mutation_feature, gexpr_feature, methylation_feature, data_new, nb_celllines, nb_drugs)
 
+print('Initializing model...')
 model = GraphCDR(hidden_channels=args.hidden_channels, encoder=Encoder(args.output_channels, args.hidden_channels), summary=Summary(args.output_channels, args.hidden_channels),
                  feat=NodeRepresentation(atom_shape,gexpr_feature.shape[-1],methylation_feature.shape[-1],args.output_channels),index=nb_celllines)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0)
@@ -37,7 +44,9 @@ myloss = nn.BCELoss()
 def train():
     model.train()
     loss_temp=0
+    print('Training batch:', end=' ')
     for batch, (drug,cell) in enumerate(zip(drug_set,cellline_set)):
+        print(f'{batch+1}', end=' ')
         optimizer.zero_grad()
         pos_z, neg_z, summary_pos, summary_neg, pos_adj=model(drug.x, drug.edge_index, drug.batch, cell[0], cell[1], cell[2], train_edge)
         dgi_pos = model.loss(pos_z, neg_z, summary_pos)
@@ -47,10 +56,11 @@ def train():
         loss.backward()
         optimizer.step()
         loss_temp += loss.item()
-    print('train loss: ', str(round(loss_temp, 4)))
+    print('\nTrain loss: ', str(round(loss_temp, 4)))
 
 def test():
     model.eval()
+    print('Testing...')
     with torch.no_grad():
         for batch, (drug, cell) in enumerate(zip(drug_set, cellline_set)):
             _, _, _, _, pre_adj=model(drug.x, drug.edge_index, drug.batch,cell[0], cell[1], cell[2], train_edge)
@@ -58,22 +68,32 @@ def test():
         yp=pre_adj[test_mask].detach().numpy()
         ytest=label_pos[test_mask].detach().numpy()
         AUC, AUPR, F1, ACC =metrics_graph(ytest,yp)
-        print('test loss: ', str(round(loss_temp.item(), 4)))
-        print('test auc: ' + str(round(AUC, 4)) + '  test aupr: ' + str(round(AUPR, 4)) +
-              '  test f1: ' + str(round(F1, 4)) + '  test acc: ' + str(round(ACC, 4)))
+        print('Test loss: ', str(round(loss_temp.item(), 4)))
+        print('Test metrics:')
+        print('  AUC: ' + str(round(AUC, 4)))
+        print('  AUPR: ' + str(round(AUPR, 4)))
+        print('  F1: ' + str(round(F1, 4)))
+        print('  ACC: ' + str(round(ACC, 4)))
     return AUC, AUPR, F1, ACC
 
 #------main
+print('\nStarting training...')
 final_AUC = 0;final_AUPR = 0;final_F1 = 0;final_ACC = 0
 for epoch in range(args.epoch):
-    print('\nepoch: ' + str(epoch))
+    print('\nEpoch: ' + str(epoch+1) + '/' + str(args.epoch))
     train()
     AUC, AUPR, F1, ACC = test()
     if (AUC > final_AUC):
         final_AUC = AUC;final_AUPR = AUPR;final_F1 = F1;final_ACC = ACC
+        print('New best model found!')
+
 elapsed = time.time() - start_time
-print('---------------------------------------')
-print('Elapsed time: ', round(elapsed, 4))
-print('Final_AUC: ' + str(round(final_AUC, 4)) + '  Final_AUPR: ' + str(round(final_AUPR, 4)) +
-      '  Final_F1: ' + str(round(final_F1, 4)) + '  Final_ACC: ' + str(round(final_ACC, 4)))
-print('---------------------------------------')
+print('\n' + '='*40)
+print('Training completed!')
+print('Total time elapsed: ', round(elapsed, 4), 'seconds')
+print('\nBest model metrics:')
+print('  AUC: ' + str(round(final_AUC, 4)))
+print('  AUPR: ' + str(round(final_AUPR, 4)))
+print('  F1: ' + str(round(final_F1, 4)))
+print('  ACC: ' + str(round(final_ACC, 4)))
+print('='*40)
