@@ -57,7 +57,7 @@ class NodeRepresentation(nn.Module):
         self.cov1 = nn.Conv2d(1, 50, (1, 700), stride=(1, 5))
         self.cov2 = nn.Conv2d(50, 30, (1, 5), stride=(1, 2))
         self.fla_mut = nn.Flatten()
-        self.fc_mut = nn.Linear(2010, output)
+        self.fc_mut = nn.Linear(1380, output)
         # ------Concatenate_three omics
         self.fcat = nn.Linear(300, output)
         self.batchc = nn.BatchNorm1d(100)
@@ -209,6 +209,8 @@ class GraphCDR(nn.Module):
             drug_feature, drug_adj, ibatch, mutation_data, gexpr_data, methylation_data
         )
         # ---cell+drug embedding from the CDR graph and the corrupted CDR graph
+        pos_edge = pos_edge.long()
+        neg_edge = neg_edge.long()
         pos_z = self.encoder(feature, pos_edge)
         neg_z = self.encoder(feature, neg_edge)
         # ---graph-level embedding (summary)
