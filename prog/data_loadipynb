@@ -1,0 +1,145 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "c88aa107-7e14-4c40-95ed-e6717aaef100",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import argparse\n",
+    "import time\n",
+    "\n",
+    "import torch\n",
+    "from data_load import dataload\n",
+    "from data_process import process\n",
+    "from model import *\n",
+    "from my_utiils import *"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "56a2894e-1b7b-4791-bf7d-46250f71af6d",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "Drug_info_file = \"../data/Drug/1.Drug_listMon Jun 24 09_00_55 2019.csv\"\n",
+    "IC50_threds_file = \"../data/Drug/drug_threshold.txt\"\n",
+    "Drug_feature_file = \"../data/Drug/drug_graph_feat\"\n",
+    "Cell_line_info_file = \"../data/Celline/Cell_lines_annotations.txt\"\n",
+    "Genomic_mutation_file = \"../data/Celline/genomic_mutation_34673_demap_features.csv\"\n",
+    "Cancer_response_exp_file = \"../data/Celline/GDSC_IC50.csv\"\n",
+    "Gene_expression_file = (\n",
+    "    \"../data/Celline/genomic_expression_561celllines_697genes_demap_features.csv\"\n",
+    ")\n",
+    "Methylation_file = (\n",
+    "    \"../data/Celline/genomic_methylation_561celllines_808genes_demap_features.csv\"\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "73ef375f-c2d8-41d4-9467-a4d5f5aaf3a6",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/Users/inouey2/miniconda3/envs/torch/lib/python3.10/site-packages/hickle/hickle.py:356: UserWarning: Input argument 'file_obj' appears to be a file made with hickle v3. Using legacy load...\n",
+      "  warnings.warn(\"Input argument 'file_obj' appears to be a file made\"\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "All 100572 pairs across 561 cell lines and 222 drugs.\n"
+     ]
+    }
+   ],
+   "source": [
+    "# -------bio-feature extraction\n",
+    "(\n",
+    "    drug_feature,\n",
+    "    mutation_feature,\n",
+    "    gexpr_feature,\n",
+    "    methylation_feature,\n",
+    "    data_new,\n",
+    "    nb_celllines,\n",
+    "    nb_drugs,\n",
+    ") = dataload(\n",
+    "    Drug_info_file,\n",
+    "    IC50_threds_file,\n",
+    "    Drug_feature_file,\n",
+    "    Cell_line_info_file,\n",
+    "    Genomic_mutation_file,\n",
+    "    Cancer_response_exp_file,\n",
+    "    Gene_expression_file,\n",
+    "    Methylation_file,\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "38daec90-8c2c-4261-9f47-b7586392465b",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/Users/inouey2/code/GraphCDR/prog/data_process.py:50: FutureWarning: Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`\n",
+      "  atom_shape=drug_feature[0][0].shape[-1]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# -------split train and test sets\n",
+    "drug_set, cellline_set, train_edge, label_pos, train_mask, test_mask, atom_shape = (\n",
+    "    process(\n",
+    "        drug_feature,\n",
+    "        mutation_feature,\n",
+    "        gexpr_feature,\n",
+    "        methylation_feature,\n",
+    "        data_new,\n",
+    "        nb_celllines,\n",
+    "        nb_drugs,\n",
+    "    )\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "04dda2ef-66fd-4e0d-9fb9-19cfa0d0b2af",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "torch",
+   "language": "python",
+   "name": "torch"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.15"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}

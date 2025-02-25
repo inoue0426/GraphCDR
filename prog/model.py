@@ -1,15 +1,30 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import global_max_pool as gmp, global_mean_pool
 from base_model.GCNConv import GCNConv
 from base_model.SGConv import SGConv
-from torch.nn import Parameter
 from my_utiils import *
+from torch.nn import Parameter
+from torch_geometric.nn import global_max_pool as gmp
+from torch_geometric.nn import global_mean_pool
 
 EPS = 1e-15
+
+
 class NodeRepresentation(nn.Module):
-    def __init__(self, gcn_layer, dim_gexp, dim_methy, output, units_list=[256, 256, 256], use_relu=True, use_bn=True,
-                 use_GMP=True, use_mutation=True, use_gexpr=True, use_methylation=True):
+    def __init__(
+        self,
+        gcn_layer,
+        dim_gexp,
+        dim_methy,
+        output,
+        units_list=[256, 256, 256],
+        use_relu=True,
+        use_bn=True,
+        use_GMP=True,
+        use_mutation=True,
+        use_gexpr=True,
+        use_methylation=True,
+    ):
         super(NodeRepresentation, self).__init__()
         torch.manual_seed(0)
         # -------drug layers
@@ -56,7 +71,15 @@ class NodeRepresentation(nn.Module):
                     nn.init.zeros_(m.bias)
         return
 
-    def forward(self, drug_feature, drug_adj, ibatch, mutation_data, gexpr_data, methylation_data):
+    def forward(
+        self,
+        drug_feature,
+        drug_adj,
+        ibatch,
+        mutation_data,
+        gexpr_data,
+        methylation_data,
+    ):
         # -----drug representation
         x_drug = self.conv1(drug_feature, drug_adj)
         x_drug = F.relu(x_drug)
@@ -72,7 +95,7 @@ class NodeRepresentation(nn.Module):
             x_drug = gmp(x_drug, ibatch)
         else:
             x_drug = global_mean_pool(x_drug, ibatch)
-            
+
         # -----cell line representation
         # -----mutation representation
         if self.use_mutation:
@@ -99,20 +122,21 @@ class NodeRepresentation(nn.Module):
             x_methylation = F.relu(self.fc_methy2(x_methylation))
 
         # ------Concatenate representations of three omics
-        if self.use_gexpr==False:
+        if self.use_gexpr == False:
             x_cell = torch.cat((x_mutation, x_methylation), 1)
-        elif self.use_mutation==False:
+        elif self.use_mutation == False:
             x_cell = torch.cat((x_gexpr, x_methylation), 1)
         elif self.use_methylation == False:
             x_cell = torch.cat((x_mutation, x_gexpr), 1)
         else:
             x_cell = torch.cat((x_mutation, x_gexpr, x_methylation), 1)
         x_cell = F.relu(self.fcat(x_cell))
-        
-        #combine representations of cell line and drug
+
+        # combine representations of cell line and drug
         x_all = torch.cat((x_cell, x_drug), 0)
         x_all = self.batchc(x_all)
         return x_all
+
 
 class Encoder(nn.Module):
     def __init__(self, in_channels, hidden_channels):
@@ -121,12 +145,14 @@ class Encoder(nn.Module):
         self.prelu1 = nn.PReLU(hidden_channels)
         # self.conv2 = GCNConv(hidden_channels, hidden_channels, cached=True)
         # self.prelu2 = nn.PReLU(hidden_channels)
+
     def forward(self, x, edge_index):
         x = self.conv1(x, edge_index)
         x = self.prelu1(x)
         # x = self.conv2(x, edge_index)
         # x = self.prelu2(x)
         return x
+
 
 class Summary(nn.Module):
     def __init__(self, ino, inn):
@@ -165,27 +191,41 @@ class GraphCDR(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    def forward(self, drug_feature, drug_adj, ibatch, mutation_data, gexpr_data, methylation_data, edge):
-        #---CDR_graph_edge and corrupted CDR_graph_edge
+    def forward(
+        self,
+        drug_feature,
+        drug_adj,
+        ibatch,
+        mutation_data,
+        gexpr_data,
+        methylation_data,
+        edge,
+    ):
+        # ---CDR_graph_edge and corrupted CDR_graph_edge
         pos_edge = torch.from_numpy(edge[edge[:, 2] == 1, 0:2].T)
         neg_edge = torch.from_numpy(edge[edge[:, 2] == -1, 0:2].T)
-        #---cell+drug node attributes
-        feature = self.feat(drug_feature, drug_adj, ibatch, mutation_data, gexpr_data, methylation_data)
-        #---cell+drug embedding from the CDR graph and the corrupted CDR graph
+        # ---cell+drug node attributes
+        feature = self.feat(
+            drug_feature, drug_adj, ibatch, mutation_data, gexpr_data, methylation_data
+        )
+        # ---cell+drug embedding from the CDR graph and the corrupted CDR graph
         pos_z = self.encoder(feature, pos_edge)
         neg_z = self.encoder(feature, neg_edge)
-        #---graph-level embedding (summary)
+        # ---graph-level embedding (summary)
         summary_pos = self.summary(feature, pos_z)
         summary_neg = self.summary(feature, neg_z)
-        #---embedding at layer l
-        cellpos = pos_z[:self.index, ]; drugpos = pos_z[self.index:, ]
-        #---embedding at layer 0
-        cellfea = self.fc(feature[:self.index, ]); drugfea = self.fd(feature[self.index:, ])
-        cellfea = torch.sigmoid(cellfea); drugfea = torch.sigmoid(drugfea)
-        #---concatenate embeddings at different layers (0 and l)
+        # ---embedding at layer l
+        cellpos = pos_z[: self.index,]
+        drugpos = pos_z[self.index :,]
+        # ---embedding at layer 0
+        cellfea = self.fc(feature[: self.index,])
+        drugfea = self.fd(feature[self.index :,])
+        cellfea = torch.sigmoid(cellfea)
+        drugfea = torch.sigmoid(drugfea)
+        # ---concatenate embeddings at different layers (0 and l)
         cellpos = torch.cat((cellpos, cellfea), 1)
         drugpos = torch.cat((drugpos, drugfea), 1)
-        #---inner product
+        # ---inner product
         pos_adj = torch.matmul(cellpos, drugpos.t())
         pos_adj = self.act(pos_adj)
         return pos_z, neg_z, summary_pos, summary_neg, pos_adj.view(-1)
@@ -196,10 +236,12 @@ class GraphCDR(nn.Module):
 
     def loss(self, pos_z, neg_z, summary):
         pos_loss = -torch.log(
-            self.discriminate(pos_z, summary, sigmoid=True) + EPS).mean()
+            self.discriminate(pos_z, summary, sigmoid=True) + EPS
+        ).mean()
         neg_loss = -torch.log(
-            1 - self.discriminate(neg_z, summary, sigmoid=True) + EPS).mean()
+            1 - self.discriminate(neg_z, summary, sigmoid=True) + EPS
+        ).mean()
         return pos_loss + neg_loss
 
     def __repr__(self):
-        return '{}({})'.format(self.__class__.__name__, self.hidden_channels)
+        return "{}({})".format(self.__class__.__name__, self.hidden_channels)
