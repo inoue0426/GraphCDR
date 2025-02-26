@@ -33,28 +33,27 @@ drug_feature, mutation_feature, gexpr_feature, methylation_feature, nb_celllines
 train = pd.read_csv("../nci_data/train.csv")
 train['labels'] = np.load('../nci_data/train_labels.npy')
 
-# val = pd.read_csv("../nci_data/val.csv")
-# val['labels'] = np.load('../nci_data/val_labels.npy')
+val = pd.read_csv("../nci_data/val.csv")
+val['labels'] = np.load('../nci_data/val_labels.npy')
 
-# train = pd.concat([train, val], axis=0)
-
-test = pd.read_csv("../nci_data/test.csv")
-test['labels'] = np.load('../nci_data/test_labels.npy')
+test_data = pd.read_csv("../nci_data/test.csv")
+test_data['labels'] = np.load('../nci_data/test_labels.npy')
 
 train['labels'] = train['labels'].astype(int)
-test['labels'] = test['labels'].astype(int)
+val['labels'] = val['labels'].astype(int)
+test_data['labels'] = test_data['labels'].astype(int)
 
 print("Processing train/test split...")
 # -------split train and test sets
-drug_set, cellline_set, train_edge, label_pos, train_mask, test_mask, atom_shape = (
+drug_set, cellline_set, train_edge, label_pos, train_mask, valid_mask, test_mask, atom_shape = (
     process(
         drug_feature,
         mutation_feature,
         gexpr_feature,
         methylation_feature,
         train,
-        # val,
-        test,
+        val,
+        test_data,
         nb_celllines,
         nb_drugs,
 
@@ -104,6 +103,38 @@ def train():
         loss_temp += loss.item()
     print("\nTrain loss: ", str(round(loss_temp, 4)))
 
+# 検証関数の追加
+def validate():
+    model.eval()
+    print("Validating...")
+    with torch.no_grad():
+        for batch, (drug, cell) in enumerate(zip(drug_set, cellline_set)):
+            _, _, _, _, pre_adj = model(
+                drug.x,
+                drug.edge_index,
+                drug.batch,
+                cell[0],
+                cell[1],
+                cell[2],
+                train_edge,
+            )
+
+            loss_temp = myloss(pre_adj[valid_mask], label_pos[valid_mask])
+
+            # 予測値と真の値を取得
+            yp = pre_adj[valid_mask].detach().numpy()
+            yvalid = label_pos[valid_mask].detach().numpy()
+
+            # 評価指標の計算
+            AUC, AUPR, F1, ACC = metrics_graph(yvalid, yp)
+
+            print("Validation loss: ", str(round(loss_temp.item(), 4)))
+            print("Validation metrics:")
+            print(" AUC: " + str(round(AUC, 4)))
+            print(" AUPR: " + str(round(AUPR, 4)))
+
+            return AUC, AUPR, F1, ACC
+
 
 def test():
     model.eval()
@@ -119,11 +150,11 @@ def test():
                 cell[2],
                 train_edge,
             )
-            loss_temp = myloss(pre_adj[test_mask], label_pos[test_mask])
+            loss_temp = myloss(pre_adj[test_mask], torch.tensor(test_data['labels']).float())
 
         # 予測値と真の値を取得
         yp = pre_adj[test_mask].detach().numpy()
-        ytest = label_pos[test_mask].detach().numpy()
+        ytest =  test_data['labels']
 
         # 連続値の評価指標（AUC, AUPR）
         AUC, AUPR, F1, ACC = metrics_graph(ytest, yp)
@@ -185,38 +216,40 @@ if not file_exists:
     with open(test_results_path, "w") as f:
         f.write("ACC,Precision,Recall,F1,AUC,AUPR\n")
 
+# メインループの修正
+best_valid_auc = 0
+best_model_state = None
+
 for epoch in range(args.epoch):
     print("\nEpoch: " + str(epoch + 1) + "/" + str(args.epoch))
     train()
-    AUC, AUPR, F1, ACC, precision, recall, accuracy = test()
+    valid_AUC, valid_AUPR, valid_F1, valid_ACC = validate()
 
-    # 最良のモデルを保存
-    if AUC > final_metrics['AUC']:
-        final_metrics['AUC'] = AUC
-        final_metrics['AUPR'] = AUPR
-        final_metrics['F1'] = F1
-        final_metrics['ACC'] = ACC
-        final_metrics['Precision'] = precision
-        final_metrics['Recall'] = recall
+    # 検証データでの性能が向上した場合にモデルを保存
+    if valid_AUC > best_valid_auc:
+        best_valid_auc = valid_AUC
+        best_model_state = model.state_dict().copy()
         print("New best model found!")
 
-elapsed = time.time() - start_time
+# 最良のモデルを読み込んでテスト
+print("\nLoading best model for final evaluation...")
+model.load_state_dict(best_model_state)
+AUC, AUPR, F1, ACC, precision, recall, accuracy = test()
+
+# 結果の出力
 print("\n" + "=" * 40)
-print("Training completed!")
-print("Total time elapsed: ", round(elapsed, 4), "seconds")
-print("\nBest model metrics:")
-print("  AUC: " + str(round(final_metrics['AUC'], 4)))
-print("  AUPR: " + str(round(final_metrics['AUPR'], 4)))
-print("  F1: " + str(round(final_metrics['F1'], 4)))
-print("  ACC: " + str(round(final_metrics['ACC'], 4)))
-print("  Precision: " + str(round(final_metrics['Precision'], 4)))
-print("  Recall: " + str(round(final_metrics['Recall'], 4)))
+print("Evaluation completed!")
+print("\nFinal test metrics:")
+print(" AUC: " + str(round(AUC, 4)))
+print(" AUPR: " + str(round(AUPR, 4)))
+print(" F1: " + str(round(F1, 4)))
+print(" ACC: " + str(round(ACC, 4)))
+print(" Precision: " + str(round(precision, 4)))
+print(" Recall: " + str(round(recall, 4)))
 print("=" * 40)
 
-# 最良のモデルの結果をCSVに追加
+# 結果をCSVに保存
 with open(test_results_path, "a") as f:
     f.write(
-        f"{final_metrics['ACC']},{final_metrics['Precision']},{final_metrics['Recall']},{final_metrics['F1']},{final_metrics['AUC']},{final_metrics['AUPR']}\n"
+        f"{ACC},{precision},{recall},{F1},{AUC},{AUPR}\n"
     )
-
-print(f"Saving test results to {test_results_path}")

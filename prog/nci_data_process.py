@@ -41,8 +41,8 @@ def process(
     gexpr_feature,
     methylation_feature,
     train_df,  # Training data DataFrame
-    # valid_df=None,  # Validation data DataFrame (optional)
-    test_df=None,   # Test data DataFrame
+    valid_df,  # Validation data DataFrame (optional)
+    test_df,   # Test data DataFrame
     nb_celllines=None,
     nb_drugs=None,
 ):
@@ -59,10 +59,10 @@ def process(
 
     train_data = df_to_list(train_df)
     test_data = df_to_list(test_df)
-    # valid_data = df_to_list(valid_df)
+    valid_data = df_to_list(valid_df)
 
     # Combine all data and get unique cell lines and drug IDs
-    data_new = train_data + test_data
+    data_new = train_data + valid_data
 
     cellineid = list(set([item[0] for item in data_new]))
     cellineid.sort()
@@ -134,7 +134,7 @@ def process(
     # Prepare each dataset
     train_pairs = prepare_data(train_data)
     test_pairs = prepare_data(test_data)
-    # valid_pairs = prepare_data(valid_data)
+    valid_pairs = prepare_data(valid_data)
 
     # Create masks
     def create_mask(pairs, shape):
@@ -148,36 +148,21 @@ def process(
 
     train_mask = create_mask(train_pairs, (nb_celllines, nb_drugs))
     test_mask = create_mask(test_pairs, (nb_celllines, nb_drugs))
-    # valid_mask = create_mask(valid_pairs, (nb_celllines, nb_drugs)) if valid_pairs.shape[0] > 0 else None
+    valid_mask = create_mask(valid_pairs, (nb_celllines, nb_drugs))
 
-    # # Create labels (using 0/1 labels)
-    # pos_edge = train_pairs[train_pairs[:, 2] == 1, 0:2] if train_pairs.shape[0] > 0 else np.array([]).reshape(0, 2)
-
-    # if pos_edge.shape[0] > 0:
-    #     label_pos = coo_matrix(
-    #         (np.ones(pos_edge.shape[0]), (pos_edge[:, 0], pos_edge[:, 1])),
-    #         shape=(nb_celllines, nb_drugs),
-    #     ).toarray()
-    # else:
-    #     label_pos = np.zeros((nb_celllines, nb_drugs))
-
-    # label_pos = torch.from_numpy(label_pos).type(torch.FloatTensor).view(-1)
-
-    # すべてのデータペアを結合
-    all_pairs = np.vstack([train_pairs, test_pairs]) if test_pairs.shape[0] > 0 else train_pairs
-
-    # ラベル行列を初期化
+    # ラベル行列の作成（訓練と検証データのみを使用）
+    train_valid_pairs = np.vstack([train_pairs, valid_pairs])
     label_matrix = np.zeros((nb_celllines, nb_drugs))
 
-    # すべてのペアについてラベルを設定
-    for pair in all_pairs:
+    # 訓練と検証データのラベルを設定
+    for pair in train_valid_pairs:
         cell_idx, drug_idx, label = pair
         label_matrix[int(cell_idx), int(drug_idx)] = label
 
     # テンソルに変換
     label_pos = torch.from_numpy(label_matrix).type(torch.FloatTensor).view(-1)
 
-    # Prepare train_edge (convert 0/1 labels to -1/1)
+    # train_edgeの準備
     if train_pairs.shape[0] > 0:
         train_edge = train_pairs.copy()
         train_edge[:, 2] = 2 * train_edge[:, 2] - 1  # 0->-1, 1->1
@@ -191,11 +176,9 @@ def process(
         train_edge,
         label_pos,
         train_mask,
+        valid_mask,  # 検証マスクを追加
         test_mask,
         atom_shape,
     ]
-
-    # if valid_mask is not None:
-    #     return_data.append(valid_mask)
 
     return tuple(return_data)
