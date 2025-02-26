@@ -2,8 +2,9 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.utils.data as Data
-from .graphset import *
 from scipy.sparse import coo_matrix
+
+from .graphset import *
 
 
 def CalculateGraphFeat(feat_mat, adj_list):

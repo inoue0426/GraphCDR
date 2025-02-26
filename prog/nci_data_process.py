@@ -42,7 +42,7 @@ def process(
     methylation_feature,
     train_df,  # Training data DataFrame
     valid_df,  # Validation data DataFrame (optional)
-    test_df,   # Test data DataFrame
+    test_df,  # Test data DataFrame
     nb_celllines=None,
     nb_drugs=None,
 ):
@@ -55,7 +55,7 @@ def process(
         if df is None or df.empty:
             return []
         # Use 0/1 labels
-        return df[['Cell', 'Drug', 'labels']].values.tolist()
+        return df[["Cell", "Drug", "labels"]].values.tolist()
 
     train_data = df_to_list(train_df)
     test_data = df_to_list(test_df)
@@ -117,12 +117,12 @@ def process(
         if not data_subset:
             return np.array([]).reshape(0, 3)
 
-        cellline_num = np.array([
-            [j[1] for j in cellmap if i[0] == j[0]][0] for i in data_subset
-        ])
-        pubmed_num = np.array([
-            [j[1] for j in pubmedmap if i[1] == j[0]][0] for i in data_subset
-        ])
+        cellline_num = np.array(
+            [[j[1] for j in cellmap if i[0] == j[0]][0] for i in data_subset]
+        )
+        pubmed_num = np.array(
+            [[j[1] for j in pubmedmap if i[1] == j[0]][0] for i in data_subset]
+        )
         # Use 0/1 labels
         label_num = np.array([i[2] for i in data_subset])
 
@@ -142,7 +142,7 @@ def process(
             return torch.zeros(shape[0] * shape[1], dtype=torch.bool)
         mask = coo_matrix(
             (np.ones(pairs.shape[0], dtype=bool), (pairs[:, 0], pairs[:, 1])),
-            shape=shape
+            shape=shape,
         ).toarray()
         return torch.from_numpy(mask).view(-1)
 

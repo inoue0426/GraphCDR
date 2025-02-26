@@ -2,8 +2,7 @@ import math
 
 import numpy as np
 import torch
-from sklearn.metrics import (accuracy_score, precision_recall_curve,
-                             roc_auc_score)
+from sklearn.metrics import accuracy_score, precision_recall_curve, roc_auc_score
 
 
 def uniform(size, tensor):

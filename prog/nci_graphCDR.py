@@ -1,17 +1,15 @@
 import argparse
+import os
 import time
-
-import torch
-from nci_data_load import dataload
-from nci_data_process import process
-from model import *
-from my_utiils import *
 
 import numpy as np
 import pandas as pd
-
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-import os
+import torch
+from model import *
+from my_utiils import *
+from nci_data_load import dataload
+from nci_data_process import process
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 parser = argparse.ArgumentParser(description="Drug_response_pre")
 parser.add_argument("--alph", dest="alph", type=float, default=0.30, help="")
@@ -28,36 +26,49 @@ start_time = time.time()
 
 print("Loading data files...")
 # ------data files
-drug_feature, mutation_feature, gexpr_feature, methylation_feature, nb_celllines,  nb_drugs, = dataload()
+(
+    drug_feature,
+    mutation_feature,
+    gexpr_feature,
+    methylation_feature,
+    nb_celllines,
+    nb_drugs,
+) = dataload()
 
 train = pd.read_csv("../nci_data/train.csv")
-train['labels'] = np.load('../nci_data/train_labels.npy')
+train["labels"] = np.load("../nci_data/train_labels.npy")
 
 val = pd.read_csv("../nci_data/val.csv")
-val['labels'] = np.load('../nci_data/val_labels.npy')
+val["labels"] = np.load("../nci_data/val_labels.npy")
 
 test_data = pd.read_csv("../nci_data/test.csv")
-test_data['labels'] = np.load('../nci_data/test_labels.npy')
+test_data["labels"] = np.load("../nci_data/test_labels.npy")
 
-train['labels'] = train['labels'].astype(int)
-val['labels'] = val['labels'].astype(int)
-test_data['labels'] = test_data['labels'].astype(int)
+train["labels"] = train["labels"].astype(int)
+val["labels"] = val["labels"].astype(int)
+test_data["labels"] = test_data["labels"].astype(int)
 
 print("Processing train/test split...")
 # -------split train and test sets
-drug_set, cellline_set, train_edge, label_pos, train_mask, valid_mask, test_mask, atom_shape = (
-    process(
-        drug_feature,
-        mutation_feature,
-        gexpr_feature,
-        methylation_feature,
-        train,
-        val,
-        test_data,
-        nb_celllines,
-        nb_drugs,
-
-    )
+(
+    drug_set,
+    cellline_set,
+    train_edge,
+    label_pos,
+    train_mask,
+    valid_mask,
+    test_mask,
+    atom_shape,
+) = process(
+    drug_feature,
+    mutation_feature,
+    gexpr_feature,
+    methylation_feature,
+    train,
+    val,
+    test_data,
+    nb_celllines,
+    nb_drugs,
 )
 
 print("Test mask positive examples:", torch.sum(label_pos[test_mask] > 0).item())
@@ -102,6 +113,7 @@ def train():
         optimizer.step()
         loss_temp += loss.item()
     print("\nTrain loss: ", str(round(loss_temp, 4)))
+
 
 # 検証関数の追加
 def validate():
@@ -150,11 +162,13 @@ def test():
                 cell[2],
                 train_edge,
             )
-            loss_temp = myloss(pre_adj[test_mask], torch.tensor(test_data['labels']).float())
+            loss_temp = myloss(
+                pre_adj[test_mask], torch.tensor(test_data["labels"]).float()
+            )
 
         # 予測値と真の値を取得
         yp = pre_adj[test_mask].detach().numpy()
-        ytest =  test_data['labels']
+        ytest = test_data["labels"]
 
         # 連続値の評価指標（AUC, AUPR）
         AUC, AUPR, F1, ACC = metrics_graph(ytest, yp)
@@ -180,30 +194,22 @@ def test():
     return AUC, AUPR, F1, ACC, precision, recall, accuracy
 
 
-
-
-# Variables to store model state
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import os
 
+# Variables to store model state
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
 # 結果を保存するディレクトリを作成
-output_dir = 'results'
+output_dir = "results"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # ------main
 print("\nStarting training...")
-final_metrics = {
-    'AUC': 0,
-    'AUPR': 0,
-    'F1': 0,
-    'ACC': 0,
-    'Precision': 0,
-    'Recall': 0
-}
+final_metrics = {"AUC": 0, "AUPR": 0, "F1": 0, "ACC": 0, "Precision": 0, "Recall": 0}
 
 # 出力ディレクトリの設定
-output_dir = getattr(args, 'o', './results/')
+output_dir = getattr(args, "o", "./results/")
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -250,6 +256,4 @@ print("=" * 40)
 
 # 結果をCSVに保存
 with open(test_results_path, "a") as f:
-    f.write(
-        f"{ACC},{precision},{recall},{F1},{AUC},{AUPR}\n"
-    )
+    f.write(f"{ACC},{precision},{recall},{F1},{AUC},{AUPR}\n")
